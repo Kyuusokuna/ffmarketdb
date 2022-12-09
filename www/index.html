@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>FFMarket</title>
+        <meta name="description" content="Online FFXIV Marketboard">
+        <meta name="viewport" content="width=device-width">
+
+        <link href="libs/chosen/chosen.min.css" rel="stylesheet" type="text/css" />
+        <link href="index.css" rel="stylesheet" type="text/css" />
+
+        <script defer src="libs/jquery/jquery-3.5.1.min.js"></script>
+        <script defer src="libs/chosen/chosen.jquery.min.js"></script>
+        <script defer src="data.js"></script>
+        <script defer src="index.js"></script>
+    </head>
+    <body>
+        <div id="header">
+            <select id="item_select" data-placeholder="Select an item">
+                <option></option>
+            </select>
+            <select id="dc_select" data-placeholder="Select data center"></select>
+        </div>
+        <div id="selected_item">
+            Select an item and data center
+        </div>
+        <div id="results">
+            <table id="results_table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>HQ</th>
+                        <th>QTY</th>
+                        <th>Price</th>
+                        <th>Total</th>
+                        <th>World</th>
+                        <th>Retainer</th>
+                    </tr>
+                </thead>
+                <tbody id="results_table_rows"></tbody>
+            </table>
+        </div>
+    </body>
+</html>

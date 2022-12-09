@@ -1,0 +1,57 @@
+@font-face {
+    font-family: "numbers_font";
+    src: local("Courier New");
+    unicode-range: U+30-39;
+}
+
+:root {
+    background-color: #1c1c1c;
+    color: #eee;
+    font-family: "numbers_font", 'Lucida Sans Unicode', 'Lucida Sans', Arial, sans-serif;
+}
+
+#header {
+    display: flex;
+    flex-flow: row wrap;
+}
+
+#item_select_chosen {
+    flex: 20 1 20em;
+}
+
+#dc_select_chosen {
+    flex: 1 0 12em;
+}
+
+#results {
+    border-radius: .5em;
+    overflow: hidden;
+}
+
+#results_table {
+    width: 100%;
+    text-align: center;
+    background-color: #1e2128;
+    border: 1px solid #393e4a;
+    border-collapse: collapse;
+}
+
+td, th {
+    border: 1px solid #393e4a;
+}
+
+th {
+    background-color: #393e4a;
+}
+
+tr:hover {
+    background-color: #15171c;
+}
+
+td:nth-child(4) {
+    color: #dddc87;
+}
+
+td:nth-child(5) {
+    color: #afffa1;
+}
