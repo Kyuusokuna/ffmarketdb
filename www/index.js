@@ -51,14 +51,14 @@ function update_selection(new_item, new_dc) {
     document.getElementById("selected_item").innerText = get_item_name(new_item);
 
     for(const world of selected_dc.Worlds){
-        const url = "http://ffmarketdb.kyuusokuna.ovh:3000/items/" + world + "/" + selected_item;
+        const url = "https://ffmarketdb.kyuusokuna.ovh/items/" + world + "/" + selected_item;
         //const url = "http://localhost:3000/items/" + world + "/" + selected_item;
         const world_name = get_world_name(world)
 
         $.ajax({
             dataType: "json",
             url: url,
-            success: async function(data) {
+            success: function(data) {
                 if(new_item != selected_item || !selected_dc.Worlds.includes(world))
                     return;
 
