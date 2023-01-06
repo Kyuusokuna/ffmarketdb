@@ -63,25 +63,14 @@ function get_time_difference_string(time) {
 }
 
 function update_shown_data() {
-    document.getElementById("results_table_rows").replaceChildren();
-
     const enabled_worlds = selected_dc.Worlds.filter((world) => !document.getElementById(world)?.classList?.contains("disabled"));
 
-    const table_rows = current_listings
-        .filter((listing) => enabled_worlds.includes(listing.world_id))
-        .map((listing, index) => 
-            create_tr_from_values(
-                index.toLocaleString("en-US"),
-                listing.flags & 0b00001000 ? "Y" : "",
-                listing.amount.toLocaleString("en-US"),
-                listing.price_per_unit.toLocaleString("en-US"),
-                (listing.amount * listing.price_per_unit).toLocaleString("en-US"),
-                listing.world,
-                listing.retainer_name,
-            )
-        );
-
-    document.getElementById("results_table_rows").replaceChildren(...table_rows);
+    for(row of document.getElementById("results_table_rows").children) {
+        if(enabled_worlds.map((id) => get_world_name(id)).includes(row.children[5].innerHTML))
+            row.classList.remove("hidden_row");
+        else
+            row.classList.add("hidden_row");
+    }
 }
 
 function request_data() {
@@ -90,6 +79,7 @@ function request_data() {
 
     const request_id = ++current_request_id;
     current_listings = [];
+    document.getElementById("results_table_rows").replaceChildren();
     
     for(const world of selected_dc.Worlds) {
         const url = "https://ffmarketdb.kyuusokuna.ovh/items/" + world + "/" + selected_item;
@@ -109,6 +99,21 @@ function request_data() {
 
                 current_listings.push(...data.listings.map(listing => ({ ...listing, world: world_name, world_id: world})));
                 current_listings.sort((a, b) => a.price_per_unit - b.price_per_unit);
+
+                const table_rows = current_listings
+                    .map((listing, index) => 
+                        create_tr_from_values(
+                            index.toLocaleString("en-US"),
+                            listing.flags & 0b00001000 ? "Y" : "",
+                            listing.amount.toLocaleString("en-US"),
+                            listing.price_per_unit.toLocaleString("en-US"),
+                            (listing.amount * listing.price_per_unit).toLocaleString("en-US"),
+                            listing.world,
+                            listing.retainer_name,
+                        )
+                    );
+
+                document.getElementById("results_table_rows").replaceChildren(...table_rows);
 
                 update_shown_data();
             }
