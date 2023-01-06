@@ -104,7 +104,7 @@ function request_data() {
                     .map((listing, index) => 
                         create_tr_from_values(
                             index.toLocaleString("en-US"),
-                            listing.flags & 0b00001000 ? "Y" : "",
+                            listing.is_hq ? "Y" : "",
                             listing.amount.toLocaleString("en-US"),
                             listing.price_per_unit.toLocaleString("en-US"),
                             (listing.amount * listing.price_per_unit).toLocaleString("en-US"),
