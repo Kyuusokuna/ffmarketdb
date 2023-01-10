@@ -116,6 +116,14 @@ function request_data() {
                 document.getElementById("results_table_rows").replaceChildren(...table_rows);
 
                 update_shown_data();
+            },
+            error: function(request) {
+                if(current_request_id != request_id)
+                    return;
+
+                document.getElementById(world).innerHTML = world_name + "<br/>N/A";
+
+                console.log(request.status);
             }
         });
     }
