@@ -123,7 +123,19 @@ function request_data() {
 
 function update_selected_item(new_item) {
     selected_item = new_item;
-    document.getElementById("selected_item").innerText = get_item_name(new_item);
+
+    if(!new_item) {
+        current_listings = [];
+        document.getElementById("selected_item").innerText = "Select an item and data center";
+        document.getElementById("results_table_rows").replaceChildren();
+        update_selected_dc(selected_dc);
+        return;
+    }
+
+    const item_name = get_item_name(new_item);
+
+    document.getElementById("selected_item").innerText = item_name;
+    document.title = item_name;
 
     request_data();
 }
@@ -145,11 +157,17 @@ function update_selected_dc(new_dc) {
 
 $(document).ready(function() {
     let item_options = [ document.createElement("option") ];
+    const item_param = new URLSearchParams(window.location.search).get("item");
 
     for(const item of items) {
         var option = document.createElement("option");
         option.value = item.id;
         option.text = item.Name;
+
+        if(item_param && item_param == item.id) {
+            option.selected = true;
+            update_selected_item(item.id);
+        }
 
         item_options.push(option);
     }
@@ -178,6 +196,7 @@ $(document).ready(function() {
         max_shown_results: 500,
         search_contains: true,
     }).change(function(event, selected) {
+        window.history.pushState(null, null, "?item=" + selected.selected);
         update_selected_item(selected.selected);
     });
 
@@ -187,4 +206,9 @@ $(document).ready(function() {
         set_local_storage("selected_dc", dcs[selected.selected].Name)
         update_selected_dc(dcs[selected.selected]);
     });
+});
+
+window.addEventListener("popstate", () => {
+    const item_param = new URLSearchParams(window.location.search).get("item");
+    setTimeout(() => { update_selected_item(item_param); }, 0);
 });
