@@ -3,7 +3,7 @@ use axum::{Router, routing::get, extract::Path, http::StatusCode, Json};
 use tower_http::cors::{CorsLayer, Any};
 
 fn get_time() -> String {
-    return chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
 
 const FLAGS_NUM_MATERIA_MASK: u8 = 0b00000111;
@@ -20,25 +20,26 @@ fn convert_to_listingsdb_listing(listing: &universalis::Listing) -> listingsdb::
     flags |= if listing.is_on_mannequin { FLAGS_IS_ON_MANNEQUIN } else { 0 };
 
 
+    let retainer_name_length = std::cmp::min(listing.retainer_name.len(), listingsdb::LISTINGSDB_MAX_RETAINER_NAME_LENGTH as usize);
     let mut retainer_name = [0; listingsdb::LISTINGSDB_MAX_RETAINER_NAME_LENGTH as usize];
-    for i in 0..std::cmp::min(listing.retainer_name.len(), listingsdb::LISTINGSDB_MAX_RETAINER_NAME_LENGTH as usize) {
-        retainer_name[i] = listing.retainer_name.as_bytes()[i];
-    }
+    retainer_name[..retainer_name_length].copy_from_slice(listing.retainer_name.as_bytes());
 
+    let num_materia = std::cmp::min(listing.materia.len(), listingsdb::LISTINGSDB_MAX_NUM_MATERIA_PER_ITEM as usize);
     let mut materia_ids = [0; listingsdb::LISTINGSDB_MAX_NUM_MATERIA_PER_ITEM as usize];
-    for i in 0..std::cmp::min(listing.materia.len(), listingsdb::LISTINGSDB_MAX_NUM_MATERIA_PER_ITEM as usize) {
-        materia_ids[i] = (listing.materia[i].materia_index as u16) << 8 | (listing.materia[i].slot_index as u16);
+
+    for (i, materia) in listing.materia[..num_materia].iter().enumerate() {
+        materia_ids[i] = (materia.materia_index as u16) << 8 | (materia.slot_index as u16);
     }
 
-    return listingsdb::Listing {
-        flags: flags,
+    listingsdb::Listing {
+        flags,
         city: listing.city,
         dye_id: listing.dye_id,
-        materia_ids: materia_ids,
+        materia_ids,
         amount: listing.amount,
         price_per_unit: listing.price_per_unit,
-        retainer_name: retainer_name,
-    };
+        retainer_name,
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -65,11 +66,11 @@ fn as_string<S>(retainer_name: &[u8; listingsdb::LISTINGSDB_MAX_RETAINER_NAME_LE
         true => unsafe { std::ffi::CStr::from_ptr(retainer_name.as_ptr() as *const i8).to_str().unwrap() },
     };
 
-    return serializer.serialize_str(str);
+    serializer.serialize_str(str)
 }
 
 fn convert_to_get_item_response_listing(listing: &listingsdb::Listing) -> GetItemResponseListing {
-    return GetItemResponseListing {
+    GetItemResponseListing {
         is_hq: (listing.flags & FLAGS_IS_HQ) != 0,
         is_crafted: (listing.flags & FLAGS_IS_CRAFTED) != 0,
         is_on_mannequin: (listing.flags & FLAGS_IS_ON_MANNEQUIN) != 0,
@@ -83,7 +84,7 @@ fn convert_to_get_item_response_listing(listing: &listingsdb::Listing) -> GetIte
         price_per_unit: listing.price_per_unit,
 
         retainer_name: listing.retainer_name,
-    };
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -102,7 +103,7 @@ async fn get_item(Path((world, item)): Path<(u16, u16)>) -> Result<Json<GetItemR
             last_updated: result.0, 
             listings: listings[0..result.1 as usize]
                         .iter()
-                        .map(|x| convert_to_get_item_response_listing(x))
+                        .map(convert_to_get_item_response_listing)
                         .collect::<Vec<GetItemResponseListing>>()
             })),
         Err(_) => Err(StatusCode::NOT_FOUND),
@@ -118,7 +119,7 @@ async fn main() {
         .unwrap_or_else(|_| "[::]:3000".to_string());
     
     listingsdb::init(&data_path).expect("Failed to init listingsdb.");
-    let server_socket = bind_address.parse::<SocketAddr>().expect(&format!("Failed to bind to FFMARKETDB_BIND_ADDRESS ({}).", bind_address));
+    let server_socket = bind_address.parse::<SocketAddr>().unwrap_or_else(|_| panic!("Failed to bind to FFMARKETDB_BIND_ADDRESS ({}).", bind_address));
     
     std::thread::spawn(|| {
         loop {
