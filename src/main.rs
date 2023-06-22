@@ -1,9 +1,10 @@
 use std::{net::SocketAddr, time::Duration, thread::sleep};
 use axum::{Router, routing::get, extract::Path, http::StatusCode, Json};
+use time::format_description::well_known::Iso8601;
 use tower_http::cors::{CorsLayer, Any};
 
 fn get_time() -> String {
-    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+    time::OffsetDateTime::now_utc().format(&Iso8601::DEFAULT).unwrap()
 }
 
 const FLAGS_NUM_MATERIA_MASK: u8 = 0b00000111;
