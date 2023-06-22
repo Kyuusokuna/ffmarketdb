@@ -1,0 +1,16 @@
+[package]
+name = "ffmarketdb"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+listingsdb = { path = "../listingsdb" }
+universalis = { path = "../universalis" }
+tokio = { version = "1.21.2", features = ["full"] }
+tower-http = { version = "0.3.4", features = ["cors"] }
+serde = { version = "1.0.147", features = ["derive"] }
+axum = "0.6.0"
+time = "0.3.21"
