@@ -124,7 +124,7 @@ async fn main() {
     
     std::thread::spawn(|| {
         loop {
-            let mut connection = match universalis::connect() {
+            let mut connection = match universalis::Connection::connect() {
                 Ok(connection) => connection,
                 Err(err) => { println!("[{}] Failed to connect to Universalis. Retrying. {:?}", get_time(), err); sleep(Duration::from_millis(5000)); continue },
             };

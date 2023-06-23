@@ -9,4 +9,4 @@ edition = "2021"
 thiserror = "1.0.37"
 bson = "2.4.0"
 serde = { version = "1.0.147", features = ["derive"] }
-tungstenite = { version = "0.17.3", features = ["rustls-tls-native-roots"] }
+tungstenite = { version = "0.19.0", features = ["rustls-tls-native-roots"] }

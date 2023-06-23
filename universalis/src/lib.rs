@@ -1,8 +1,9 @@
-use std::{ net::{ TcpStream, ToSocketAddrs}, time::Duration };
+use std::io::{Read, Write};
 use serde::Deserialize;
 use thiserror::Error;
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub struct MateriaInfo {
     #[serde(rename = "slotID")]
     pub slot_index: u8,
@@ -10,7 +11,8 @@ pub struct MateriaInfo {
     pub materia_index: u8,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct Listing {
     #[serde(rename = "hq")]
     pub is_hq: bool,
@@ -43,7 +45,8 @@ pub struct Listing {
     pub seller_id: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct Sale {
     #[serde(rename = "hq")]
     pub is_hq: bool,
@@ -63,7 +66,8 @@ pub struct Sale {
     pub buyer: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 #[serde(tag = "event")]
 pub enum Message {
     #[serde(rename = "listings/add")]
@@ -76,90 +80,61 @@ pub enum Message {
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("Failed to resolve the ip of 'universalis.app'.")]
-    NameResolveFailed(std::io::Error),
-    #[error("Failed to connect to 'universalis.app'")]
-    ConnectFailed(),
-    #[error("Websocket handshake failed")]
-    WebsocketHandshakeFailed(tungstenite::HandshakeError<tungstenite::ClientHandshake<tungstenite::stream::MaybeTlsStream<TcpStream>>>),
-    #[error("read_message failed")]
-    ReadMessageFailed(tungstenite::Error),
+    #[error("Connection Error.")]
+    ConnectionError(#[from] tungstenite::Error),
 }
 
-pub struct UniversalisConnection {
-    socket: tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<TcpStream>>,
+pub struct Connection<Stream: Read + Write> {
+    inner: tungstenite::WebSocket<Stream>,
 }
 
-pub fn connect() -> Result<UniversalisConnection, Error>{
-    let connection = connect_to_universalis()?;
-    _ = connection.set_read_timeout(Some(Duration::from_secs(15)));
+impl Connection<tungstenite::stream::MaybeTlsStream<std::net::TcpStream>> {
+    #[inline]
+    pub fn connect() -> Result<Self, Error>{
+        let connection = tungstenite::connect("wss://universalis.app/api/ws")?.0;
+        _ = match connection.get_ref() {
+            tungstenite::stream::MaybeTlsStream::Plain(stream) => stream.set_read_timeout(Some(core::time::Duration::from_secs(15))),
+            tungstenite::stream::MaybeTlsStream::Rustls(stream) => stream.sock.set_read_timeout(Some(core::time::Duration::from_secs(15))),
+            _ => Ok(()),
+        };
 
-    match tungstenite::client_tls("wss://universalis.app/api/ws", connection) {
-        Ok(client) => Ok(UniversalisConnection { socket: client.0 }),
-        Err(err) => Err(Error::WebsocketHandshakeFailed(err)),
+        Ok(Self { inner: connection })
     }
 }
 
-impl UniversalisConnection {
+impl<Stream: Read + Write> Connection<Stream> {
+    #[inline]
     pub fn subscribe(&mut self, channel: &str) {
         let bson = bson::rawdoc! {"event": "subscribe", "channel": channel };
         let message = tungstenite::Message::binary(bson.as_bytes());
-        _ = self.socket.write_message(message);
+        _ = self.inner.write_message(message);
     }
 
+    #[inline]
     pub fn unsubscribe(&mut self, channel: &str) {
         let bson = bson::rawdoc! {"event": "unsubscribe", "channel": channel };
         let message = tungstenite::Message::binary(bson.as_bytes());
-        _ = self.socket.write_message(message);
+        _ = self.inner.write_message(message);
     }
 
+    #[inline]
     pub fn read_message(&mut self) -> Result<Message, Error> {
         loop {
-            let message = match self.socket.read_message() {
+            let message = match self.inner.read_message() {
                 Ok(message) => message,
-                Err(tungstenite::Error::Io(err)) => {
-                    if err.kind() == std::io::ErrorKind::TimedOut {
-                        _ = self.socket.write_message(tungstenite::Message::Ping(vec![]));
-                        continue
-                    } else {
-                        return Err(Error::ReadMessageFailed(tungstenite::Error::Io(err)));
-                    }
+                Err(tungstenite::Error::Io(err)) if err.kind() == std::io::ErrorKind::TimedOut => {
+                    _ = self.inner.write_message(tungstenite::Message::Pong(vec![]));
+                    continue
                 }
-                Err(err) => return Err(Error::ReadMessageFailed(err)),
+                err => err?,
             };
 
             if !message.is_binary() {
                 continue;
             }
 
-            let message = message.into_data();
-            //let raw_bson = bson::Document::from_reader(message.as_slice()).unwrap();
-            //print!("{:?}", raw_bson);
-            /*for listing in raw_bson.get_array("listings").unwrap() {
-                for key in listing.as_document().unwrap().keys() {
-                    print!("{:?}, ", key);
-                }
-                println!();
-            }*/
-
-            let message = match bson::from_slice::<Message>(&message) {
-                Ok(message) => message,
-                Err(_) => continue,
-            };
-
+            let Ok(message) = bson::from_slice::<Message>(&message.into_data()) else { continue };
             return Ok(message);
         }
     }
-}
-
-fn connect_to_universalis() -> Result<TcpStream, Error>{
-    let addrs = ("universalis.app", 443).to_socket_addrs().map_err(|err| Error::NameResolveFailed(err))?;
-    for addr in addrs {
-        if let Ok(stream) = TcpStream::connect(addr) {
-            _ = stream.set_nodelay(true);
-            return Ok(stream);
-        }
-    }
-
-    Err(Error::ConnectFailed())
 }
