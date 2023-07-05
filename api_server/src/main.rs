@@ -3,12 +3,12 @@ use std::{env, net::SocketAddr};
 use axum::{extract::Path, Json};
 use http::{Method, StatusCode};
 use redis::Commands;
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use tower::ServiceBuilder;
 use tower_http::{trace::TraceLayer, compression::CompressionLayer, cors::CorsLayer};
 
 
-#[derive(serde::Serialize)]
+#[derive(Serialize)]
 struct GetItemResponseListing {
     is_hq: bool,
     is_crafted: bool,
@@ -26,13 +26,13 @@ struct GetItemResponseListing {
     retainer_name: [u8; 24usize],
 }
 
-#[derive(serde::Serialize)]
+#[derive(Serialize)]
 struct GetItemResponse {
     last_updated: i64,
     listings: Vec<GetItemResponseListing>,
 }
 
-fn as_string<S>(retainer_name: &[u8; 24usize], serializer: S) -> Result<S::Ok, S::Error> where S: serde::Serializer {
+fn as_string<S>(retainer_name: &[u8; 24usize], serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
     let str = match retainer_name.iter().any(|&x| x == 0) {
         false => unsafe { std::str::from_utf8_unchecked(retainer_name) },
         true => unsafe { std::ffi::CStr::from_ptr(retainer_name.as_ptr() as *const i8).to_str().unwrap() },

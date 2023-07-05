@@ -7,7 +7,9 @@ edition = "2021"
 
 [dependencies]
 listings = { path = "../listings" }
-universalis = { path = "../universalis" }
+bson = "2.4.0"
+serde = { version = "1.0.147", features = ["derive"] }
+tungstenite = { version = "0.19.0", features = ["rustls-tls-native-roots"] }
 redis = { version = "0.23.0", features = ["r2d2"] }
 r2d2 = "0.8.10"
 tracing = { version = "0.1.37", features = ["max_level_trace", "release_max_level_debug"] }
