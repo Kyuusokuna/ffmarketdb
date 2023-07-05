@@ -8,9 +8,6 @@ fn main() {
     let redis_client = redis::Client::open(redis_url).expect("Invalid REDIS_URL. Exiting.");
     let redis_pool = r2d2::Pool::new(redis_client).expect("Failed to connect to redis db. Exiting.");
 
-    let mut zstd = zstd_safe::CCtx::default();
-    zstd.set_parameter(zstd_safe::CParameter::CompressionLevel(1)).expect("Failed to set zstd compression level.");
-
     loop {
         let mut connection = match universalis::Connection::connect() {
             Ok(connection) => connection,
@@ -42,7 +39,7 @@ fn main() {
                     };
 
                     let key = format!("{item}");
-                    match redis.hset(key, world, 0) {
+                    match redis.hset(key, world, listings::compress_listings(time::OffsetDateTime::now_utc().unix_timestamp(), &listings.iter().map(|x| x.into()).collect::<Vec<listings::Listing>>())) {
                         Ok(()) => (),
                         Err(_) => {
                             error!("Failed to set redis key. Dropping data.");

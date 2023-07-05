@@ -1,2 +1,2 @@
 [workspace]
-members = ["ffmarket", "listingsdb", "universalis", "universalis_importer"]
+members = ["ffmarket", "listingsdb", "universalis", "universalis_importer", "api_server", "listings"]
