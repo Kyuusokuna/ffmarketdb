@@ -1,11 +1,18 @@
-pub const FLAGS_IS_HQ: u8 = 1 << 0;
-pub const FLAGS_IS_CRAFTED: u8 = 1 << 1;
-pub const FLAGS_IS_ON_MANNEQUIN: u8 = 1 << 2;
+use bitflags::bitflags;
+
+bitflags! {
+    #[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
+    pub struct ListingFlags : u8 {
+        const IS_HQ           = 0b0000_0001;
+        const IS_CRAFTED      = 0b0000_0010;
+        const IS_ON_MANNEQUIN = 0b0000_0100;
+    }
+}
 
 #[repr(C)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub struct Listing {
-    pub flags: u8,
+    pub flags: ListingFlags,
     pub city: u8,
     pub dye_id: u16,
     pub materia_ids: [u16; 5usize],

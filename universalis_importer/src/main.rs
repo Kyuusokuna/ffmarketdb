@@ -7,9 +7,9 @@ impl From<&websocket::Listing> for listings::Listing {
     fn from(listing: &websocket::Listing) -> Self {
         listings::Listing { 
             flags: 
-                if listing.is_hq           { listings::FLAGS_IS_HQ }           else { 0 } |
-                if listing.is_crafted      { listings::FLAGS_IS_CRAFTED }      else { 0 } |
-                if listing.is_on_mannequin { listings::FLAGS_IS_ON_MANNEQUIN } else { 0 },
+                if listing.is_hq           { listings::ListingFlags::IS_HQ }           else { listings::ListingFlags::empty() } |
+                if listing.is_crafted      { listings::ListingFlags::IS_CRAFTED }      else { listings::ListingFlags::empty() } |
+                if listing.is_on_mannequin { listings::ListingFlags::IS_ON_MANNEQUIN } else { listings::ListingFlags::empty() },
             city: listing.city,
             dye_id: listing.dye_id,
             materia_ids: [

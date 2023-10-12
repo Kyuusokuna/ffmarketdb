@@ -43,9 +43,9 @@ fn as_string<S>(retainer_name: &[u8; 24usize], serializer: S) -> Result<S::Ok, S
 
 fn convert_to_get_item_response_listing(listing: &listings::Listing) -> GetItemResponseListing {
     GetItemResponseListing {
-        is_hq: (listing.flags & listings::FLAGS_IS_HQ) != 0,
-        is_crafted: (listing.flags & listings::FLAGS_IS_CRAFTED) != 0,
-        is_on_mannequin: (listing.flags & listings::FLAGS_IS_ON_MANNEQUIN) != 0,
+        is_hq: listing.flags.contains(listings::ListingFlags::IS_HQ),
+        is_crafted: listing.flags.contains(listings::ListingFlags::IS_CRAFTED),
+        is_on_mannequin: listing.flags.contains(listings::ListingFlags::IS_ON_MANNEQUIN),
 
         city: listing.city,
         dye_id: listing.dye_id,
