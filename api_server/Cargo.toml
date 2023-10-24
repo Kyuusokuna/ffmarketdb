@@ -8,9 +8,11 @@ edition = "2021"
 [dependencies]
 listings = { path = "../listings" }
 axum = "0.6.0"
+byteorder = "1.5.0"
 http = "0.2.9"
 redis = { version = "0.23.0" }
 serde = { version = "1.0.164", features = ["derive"] }
 tokio = { version = "1.28.2", features = ["full"] }
 tower = { version = "0.4.13", features = ["full"] }
 tower-http = { version = "0.4.1", features = ["full"] }
+zstd-safe = { version = "7.0.0", features = ["fat-lto", "std"] }

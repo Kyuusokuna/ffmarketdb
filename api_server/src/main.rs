@@ -1,6 +1,7 @@
 use std::{env, net::SocketAddr};
 
 use axum::{extract::Path, Json};
+use byteorder::{ReadBytesExt, LittleEndian};
 use http::{Method, StatusCode};
 use redis::Commands;
 use serde::{Serialize, Serializer};
@@ -23,7 +24,7 @@ struct GetItemResponseListing {
     price_per_unit: u32,
 
     #[serde(serialize_with = "as_string")]
-    retainer_name: [u8; 24usize],
+    retainer_name: [u8; 32usize],
 }
 
 #[derive(Serialize)]
@@ -32,7 +33,7 @@ struct GetItemResponse {
     listings: Vec<GetItemResponseListing>,
 }
 
-fn as_string<S>(retainer_name: &[u8; 24usize], serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+fn as_string<S>(retainer_name: &[u8; 32usize], serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
     let str = match retainer_name.iter().any(|&x| x == 0) {
         false => unsafe { std::str::from_utf8_unchecked(retainer_name) },
         true => unsafe { std::ffi::CStr::from_ptr(retainer_name.as_ptr() as *const i8).to_str().unwrap() },
@@ -59,12 +60,23 @@ fn convert_to_get_item_response_listing(listing: &listings::Listing) -> GetItemR
     }
 }
 
+fn read_stored_data(compressed: &[u8]) -> Result<(i64, Vec<listings::Listing>), std::io::Error> {
+    let mut uncompressed = Vec::with_capacity(/* num_listings */ 1 + listings::MAX_BYTES_PER_LISTING * listings::MAX_NUM_LISTINGS_PER_ITEM + /* timestamp */ 8);
+    zstd_safe::decompress(&mut uncompressed, compressed).unwrap();
+
+    let mut uncompressed = uncompressed.as_slice();
+    let last_updated = uncompressed.read_i64::<LittleEndian>()?;
+    let listings = listings::read_listings(uncompressed)?;
+
+    Ok((last_updated, listings))
+}
+
 async fn get_item(Path((item, world)): Path<(u16, u16)>) -> Result<Json<GetItemResponse>, StatusCode> {
     let client = redis::Client::open(env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1".to_string())).expect("Failed to parse REDIS_URL.");
     let mut connection = client.get_connection().expect("Failed to get connetion to redis.");
 
     let compressed :Vec<u8> = connection.hget(item, world).expect("Failed to get listings");
-    let (last_updated, listings) = listings::decompress_listings(&compressed);
+    let (last_updated, listings) = read_stored_data(&compressed).expect("Failed to parse db entry.");
 
     Ok(Json(GetItemResponse{
         last_updated,

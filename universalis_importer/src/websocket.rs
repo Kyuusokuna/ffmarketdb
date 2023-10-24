@@ -101,7 +101,7 @@ impl<Stream: Read + Write> Connection<Stream> {
     pub fn subscribe(&mut self, channel: &str) {
         let bson = bson::rawdoc! {"event": "subscribe", "channel": channel };
         let message = tungstenite::Message::binary(bson.as_bytes());
-        _ = self.inner.write_message(message);
+        _ = self.inner.send(message);
     }
 
     #[inline]
@@ -109,17 +109,17 @@ impl<Stream: Read + Write> Connection<Stream> {
     pub fn unsubscribe(&mut self, channel: &str) {
         let bson = bson::rawdoc! {"event": "unsubscribe", "channel": channel };
         let message = tungstenite::Message::binary(bson.as_bytes());
-        _ = self.inner.write_message(message);
+        _ = self.inner.send(message);
     }
 
     #[inline]
     #[allow(dead_code)]
     pub fn read_message(&mut self) -> Result<Message, tungstenite::Error> {
         loop {
-            let message = match self.inner.read_message() {
+            let message = match self.inner.read() {
                 Ok(message) => message,
                 Err(tungstenite::Error::Io(err)) if err.kind() == std::io::ErrorKind::TimedOut => {
-                    _ = self.inner.write_message(tungstenite::Message::Pong(vec![]));
+                    _ = self.inner.send(tungstenite::Message::Pong(vec![]));
                     continue
                 }
                 err => err?,

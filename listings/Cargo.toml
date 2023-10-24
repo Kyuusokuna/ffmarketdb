@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bitflags = "2.4.0"
-zstd-safe = { version = "6.0.5", features = ["std", "fat-lto"] }
+bitflags = "2.4.1"
+byteorder = "1.5.0"

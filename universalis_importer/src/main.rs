@@ -1,5 +1,6 @@
+use byteorder::{WriteBytesExt, LittleEndian};
+use redis::{Commands, ConnectionLike};
 use tracing::{warn, error, info};
-use redis::Commands;
 
 mod websocket;
 
@@ -22,7 +23,7 @@ impl From<&websocket::Listing> for listings::Listing {
             amount: listing.amount,
             price_per_unit: listing.price_per_unit,
             retainer_name: {
-                let mut array = [0; 24];
+                let mut array = [0; 32];
                 array[..listing.retainer_name.len()].copy_from_slice(listing.retainer_name.as_bytes());
                 array
             },
@@ -30,12 +31,26 @@ impl From<&websocket::Listing> for listings::Listing {
     }
 }
 
+fn make_stored_data(last_updated: i64, listings: &[websocket::Listing]) -> Result<Vec<u8>, std::io::Error>{
+    let mut uncompressed = Vec::<u8>::with_capacity(/* num_listings */ 1 + listings::MAX_BYTES_PER_LISTING * listings.len() + /* timestamp */ 8);
+    uncompressed.write_i64::<LittleEndian>(last_updated)?;
+    listings::write_listings(&mut uncompressed, listings)?;
+
+    let mut context = zstd_safe::CCtx::default();
+    context.set_parameter(zstd_safe::CParameter::CompressionLevel(1)).unwrap();
+
+    let mut compressed = Vec::<u8>::with_capacity(zstd_safe::compress_bound(uncompressed.len()));
+    context.compress2(&mut compressed, &uncompressed).unwrap();
+
+    Ok(compressed)
+}
+
 fn main() {
     tracing_subscriber::fmt().init();
 
-    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1".to_string());
-    let redis_client = redis::Client::open(redis_url).expect("Invalid REDIS_URL. Exiting.");
-    let redis_pool = r2d2::Pool::new(redis_client).expect("Failed to connect to redis db. Exiting.");
+    let redis_url: &str = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1".to_string()).leak();
+    let redis_client = redis::Client::open(redis_url).unwrap_or_else(|_| panic!("Invalid REDIS_URL ({}). Exiting.", redis_url));
+    let mut redis_connection = redis_client.get_connection().unwrap_or_else(|_| panic!("Failed to connect to REDIS_URL({}). Exiting.", redis_url));
 
     loop {
         let mut connection = match websocket::Connection::connect() {
@@ -57,24 +72,35 @@ fn main() {
 
             match message {
                 websocket::Message::ListingsAdd { world, item, listings } => {
-                    info!("updating {:3} listings for world: {world:4} item: {item:5}", listings.len());
-
-                    let mut redis = match redis_pool.get() {
-                        Ok(redis) => redis,
+                    let data = match make_stored_data(time::OffsetDateTime::now_utc().unix_timestamp(), &listings) {
+                        Ok(data) => data,
                         Err(_) => {
-                            error!("Failed to get a redis connection. Dropping data.");
+                            error!("Failed to convert data received from universalis to the storage format. Dropping data.");
                             continue;
-                        },
+                        }
                     };
 
                     let key = format!("{item}");
-                    match redis.hset(key, world, listings::compress_listings(time::OffsetDateTime::now_utc().unix_timestamp(), &listings.iter().map(|x| x.into()).collect::<Vec<listings::Listing>>())) {
+                    match redis_connection.hset(key, world, data) {
                         Ok(()) => (),
                         Err(_) => {
                             error!("Failed to set redis key. Dropping data.");
+
+                            if !redis_connection.check_connection() {
+                                redis_connection = match redis_client.get_connection() {
+                                    Ok(connection) => connection,
+                                    Err(_) => {
+                                        error!("Failed to connect to REDIS_URL({}). Retrying.", redis_url);
+                                        continue;
+                                    },
+                                };
+                            }
+
                             continue;
                         },
                     }
+
+                    info!("updated {:3} listings for world: {world:4} item: {item:5}", listings.len());
                 },
                 _ => continue,
             }

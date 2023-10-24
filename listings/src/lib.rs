@@ -1,6 +1,16 @@
+use std::io::{Result, Write, Read};
 use bitflags::bitflags;
+use byteorder::{WriteBytesExt, LittleEndian, ReadBytesExt};
+
+#[cfg(test)]
+mod tests;
+
+pub const MAX_NUM_LISTINGS_PER_ITEM: usize = 100;
+pub const MAX_BYTES_PER_LISTING: usize = 52;
+pub const MAX_BYTES_PER_LISTINGS: usize = MAX_BYTES_PER_LISTING * MAX_NUM_LISTINGS_PER_ITEM + 1;
 
 bitflags! {
+    #[repr(transparent)]
     #[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
     pub struct ListingFlags : u8 {
         const IS_HQ           = 0b0000_0001;
@@ -9,41 +19,91 @@ bitflags! {
     }
 }
 
+/// A single listing for an item
 #[repr(C)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub struct Listing {
     pub flags: ListingFlags,
     pub city: u8,
+
     pub dye_id: u16,
     pub materia_ids: [u16; 5usize],
+
     pub amount: u16,
     pub price_per_unit: u32,
-    pub retainer_name: [u8; 24usize],
+
+    pub retainer_name: [u8; 32usize],
 }
 
-pub fn compress_listings(last_updated: i64, listings: &[Listing]) -> Vec<u8> {
-    let mut input = Vec::<u8>::with_capacity(8 + listings.len() * std::mem::size_of::<Listing>());
-    input.extend_from_slice(&last_updated.to_le_bytes());
-    input.extend_from_slice(unsafe { std::slice::from_raw_parts(listings.as_ptr() as *const u8, listings.len() * std::mem::size_of::<Listing>()) });
-
-    let output_max_size = zstd_safe::compress_bound(input.len());
-    let mut output: Vec<u8> = Vec::with_capacity(output_max_size);
-
-    let mut context = zstd_safe::CCtx::default();
-    context.set_parameter(zstd_safe::CParameter::CompressionLevel(1)).unwrap();
-    context.compress2(&mut output, &input).unwrap();
-
-    output
+impl From<&Listing> for Listing {
+    fn from(val: &Listing) -> Self {
+        *val
+    }
 }
 
-pub fn decompress_listings(compressed: &[u8]) -> (i64, Vec<Listing>) {
-    let mut output = Vec::with_capacity(8 + 100 * std::mem::size_of::<Listing>());
-    zstd_safe::decompress(&mut output, compressed).unwrap();
+pub fn write_listings<B: Write, T>(buffer: &mut B, listings: &[T]) -> Result<()> 
+where for<'a> &'a T: Into<Listing> {
+    buffer.write_u8(listings.len() as u8)?;
 
-    let last_updated = i64::from_le_bytes(output[0..8].try_into().unwrap());
+    for listing in listings {
+        let listing = Into::<Listing>::into(listing);
 
-    let mut listings = Vec::<Listing>::with_capacity(100);
-    listings.extend_from_slice(unsafe { std::slice::from_raw_parts(output[8..].as_ptr() as *const Listing, (output.len() - 8) / std::mem::size_of::<Listing>()) });
-    
-    (last_updated, listings)
+        buffer.write_u8(listing.flags.bits())?;
+        buffer.write_u8(listing.city)?;
+
+        buffer.write_u16::<LittleEndian>(listing.amount)?;
+        buffer.write_u32::<LittleEndian>(listing.price_per_unit)?;
+
+        buffer.write_u16::<LittleEndian>(listing.dye_id)?;
+
+        for materia in listing.materia_ids {
+            buffer.write_u16::<LittleEndian>(materia)?;
+        }
+
+        for char in listing.retainer_name {
+            buffer.write_u8(char)?;
+        }
+    }
+
+    Ok(())
+}
+
+pub fn read_listings<B: Read>(mut buffer: B) -> Result<Vec<Listing>> {
+    let num = buffer.read_u8()?;
+
+    let mut result = Vec::<Listing>::with_capacity(num.into());
+    for _ in 0..num {
+        let listing = Listing { 
+            flags:          ListingFlags::from_bits_retain(buffer.read_u8()?), 
+            city:           buffer.read_u8()?, 
+
+            amount:         buffer.read_u16::<LittleEndian>()?, 
+            price_per_unit: buffer.read_u32::<LittleEndian>()?, 
+
+            dye_id:         buffer.read_u16::<LittleEndian>()?, 
+
+            materia_ids: [
+                buffer.read_u16::<LittleEndian>()?,
+                buffer.read_u16::<LittleEndian>()?,
+                buffer.read_u16::<LittleEndian>()?,
+                buffer.read_u16::<LittleEndian>()?,
+                buffer.read_u16::<LittleEndian>()?
+            ], 
+
+            retainer_name: [
+                buffer.read_u8()?, buffer.read_u8()?, buffer.read_u8()?, buffer.read_u8()?, 
+                buffer.read_u8()?, buffer.read_u8()?, buffer.read_u8()?, buffer.read_u8()?, 
+                buffer.read_u8()?, buffer.read_u8()?, buffer.read_u8()?, buffer.read_u8()?, 
+                buffer.read_u8()?, buffer.read_u8()?, buffer.read_u8()?, buffer.read_u8()?, 
+                buffer.read_u8()?, buffer.read_u8()?, buffer.read_u8()?, buffer.read_u8()?, 
+                buffer.read_u8()?, buffer.read_u8()?, buffer.read_u8()?, buffer.read_u8()?, 
+                buffer.read_u8()?, buffer.read_u8()?, buffer.read_u8()?, buffer.read_u8()?, 
+                buffer.read_u8()?, buffer.read_u8()?, buffer.read_u8()?, buffer.read_u8()?, 
+            ], 
+        };
+
+        result.push(listing);
+    }
+
+    Ok(result)
 }

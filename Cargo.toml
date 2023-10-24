@@ -1,2 +1,3 @@
 [workspace]
 members = ["listings", "universalis_importer", "api_server"]
+resolver = "2"
