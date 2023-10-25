@@ -1,63 +1,20 @@
 use std::{env, net::SocketAddr};
 
-use axum::{extract::{Path, State}, Json};
+use axum::{extract::{Path, State}, response::{IntoResponse, Response}};
 use byteorder::{ReadBytesExt, LittleEndian};
 use http::{Method, StatusCode};
 use redis::AsyncCommands;
-use serde::{Serialize, Serializer};
+use serde_json::json;
 use tower::ServiceBuilder;
 use tower_http::{trace::TraceLayer, compression::CompressionLayer, cors::CorsLayer};
 
-
-#[derive(Serialize)]
-struct GetItemResponseListing {
-    is_hq: bool,
-    is_crafted: bool,
-    is_on_mannequin: bool,
-
-    city: u8,
-    dye_id: u16,
-
-    materia_ids: [u16; 5usize],
-
-    amount: u16,
-    price_per_unit: u32,
-
-    #[serde(serialize_with = "as_string")]
-    retainer_name: [u8; 32usize],
-}
-
-#[derive(Serialize)]
-struct GetItemResponse {
-    last_updated: i64,
-    listings: Vec<GetItemResponseListing>,
-}
-
-fn as_string<S>(retainer_name: &[u8; 32usize], serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+fn as_string(retainer_name: &[u8; 32usize]) -> &str {
     let str = match retainer_name.iter().any(|&x| x == 0) {
         false => unsafe { std::str::from_utf8_unchecked(retainer_name) },
         true => unsafe { std::ffi::CStr::from_ptr(retainer_name.as_ptr() as *const i8).to_str().unwrap() },
     };
 
-    serializer.serialize_str(str)
-}
-
-fn convert_to_get_item_response_listing(listing: &listings::Listing) -> GetItemResponseListing {
-    GetItemResponseListing {
-        is_hq: listing.flags.contains(listings::ListingFlags::IS_HQ),
-        is_crafted: listing.flags.contains(listings::ListingFlags::IS_CRAFTED),
-        is_on_mannequin: listing.flags.contains(listings::ListingFlags::IS_ON_MANNEQUIN),
-
-        city: listing.city,
-        dye_id: listing.dye_id,
-
-        materia_ids: listing.materia_ids,
-
-        amount: listing.amount,
-        price_per_unit: listing.price_per_unit,
-
-        retainer_name: listing.retainer_name,
-    }
+    str
 }
 
 fn read_stored_data(compressed: &[u8]) -> Result<(i64, Vec<listings::Listing>), std::io::Error> {
@@ -71,14 +28,42 @@ fn read_stored_data(compressed: &[u8]) -> Result<(i64, Vec<listings::Listing>), 
     Ok((last_updated, listings))
 }
 
-async fn get_item(Path((item, world)): Path<(u16, u16)>, State(mut redis_connection): State<redis::aio::ConnectionManager>) -> Result<Json<GetItemResponse>, StatusCode> {
-    let compressed :Vec<u8> = redis_connection.hget(item, world).await.expect("Failed to get listings");
-    let (last_updated, listings) = read_stored_data(&compressed).expect("Failed to parse db entry.");
+async fn get_item(Path((item, world)): Path<(u16, u16)>, State(mut redis_connection): State<redis::aio::ConnectionManager>) -> Response {//Result<Json<GetItemResponse>, StatusCode> {
+    let compressed: Vec<u8> = match redis_connection.hget::<u16, u16, Option<Vec<u8>>>(item, world).await {
+        Ok(Some(data)) => data,
+        Ok(None) => match redis_connection.exists::<u16, bool>(item).await {
+            Ok(true) => return (StatusCode::NOT_FOUND, "No data for this world.").into_response(),
+            Ok(false) => return (StatusCode::NOT_FOUND, "No data for this item.").into_response(),
+            Err(_) => return (StatusCode::NOT_FOUND, "No data for this world. But a database error occurred during existence check for item.").into_response(),
+        },
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to get data from database.").into_response(),
+    };
 
-    Ok(Json(GetItemResponse{
-        last_updated,
-        listings: listings.iter().map(convert_to_get_item_response_listing).collect()
-    }))
+    let (last_updated, listings) = match read_stored_data(&compressed) {
+        Ok(data) => data,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to decompress and parse stored listings.").into_response(),
+    };
+    
+    let response = json!({
+        "last_updated": last_updated,
+        "listings": listings.iter().map(|listing| json!({
+            "is_hq": listing.flags.contains(listings::ListingFlags::IS_HQ),
+            "is_crafted": listing.flags.contains(listings::ListingFlags::IS_CRAFTED),
+            "is_on_mannequin": listing.flags.contains(listings::ListingFlags::IS_ON_MANNEQUIN),
+    
+            "city": listing.city,
+            "dye_id": listing.dye_id,
+    
+            "materia_ids": listing.materia_ids,
+    
+            "amount": listing.amount,
+            "price_per_unit": listing.price_per_unit,
+    
+            "retainer_name": as_string(&listing.retainer_name),
+        })).collect::<serde_json::Value>(),
+    });
+
+    (StatusCode::OK, response.to_string()).into_response()
 }
 
 #[tokio::main]
