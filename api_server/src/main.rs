@@ -1,9 +1,9 @@
 use std::{env, net::SocketAddr};
 
-use axum::{extract::Path, Json};
+use axum::{extract::{Path, State}, Json};
 use byteorder::{ReadBytesExt, LittleEndian};
 use http::{Method, StatusCode};
-use redis::Commands;
+use redis::AsyncCommands;
 use serde::{Serialize, Serializer};
 use tower::ServiceBuilder;
 use tower_http::{trace::TraceLayer, compression::CompressionLayer, cors::CorsLayer};
@@ -71,11 +71,8 @@ fn read_stored_data(compressed: &[u8]) -> Result<(i64, Vec<listings::Listing>), 
     Ok((last_updated, listings))
 }
 
-async fn get_item(Path((item, world)): Path<(u16, u16)>) -> Result<Json<GetItemResponse>, StatusCode> {
-    let client = redis::Client::open(env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1".to_string())).expect("Failed to parse REDIS_URL.");
-    let mut connection = client.get_connection().expect("Failed to get connetion to redis.");
-
-    let compressed :Vec<u8> = connection.hget(item, world).expect("Failed to get listings");
+async fn get_item(Path((item, world)): Path<(u16, u16)>, State(mut redis_connection): State<redis::aio::ConnectionManager>) -> Result<Json<GetItemResponse>, StatusCode> {
+    let compressed :Vec<u8> = redis_connection.hget(item, world).await.expect("Failed to get listings");
     let (last_updated, listings) = read_stored_data(&compressed).expect("Failed to parse db entry.");
 
     Ok(Json(GetItemResponse{
@@ -87,7 +84,9 @@ async fn get_item(Path((item, world)): Path<(u16, u16)>) -> Result<Json<GetItemR
 #[tokio::main]
 async fn main() {
     let bind_address = env::var("BIND_ADDRESS").unwrap_or_else(|_| "127.0.0.1:3000".to_string());
-    let redis_url = env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1".to_string());
+    let redis_url: &str = env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1".to_string()).leak();
+    let redis_client = redis::Client::open(redis_url).unwrap_or_else(|_| panic!("Invalid REDIS_URL ({}). Exiting.", redis_url));
+    let redis_connection = redis_client.get_tokio_connection_manager().await.unwrap_or_else(|_| panic!("Failed to connect to REDIS_URL({}). Exiting.", redis_url));
 
     let api_layers = ServiceBuilder::new()
         .layer(TraceLayer::new_for_http())
@@ -96,9 +95,10 @@ async fn main() {
 
     let routes = axum::Router::new()
         .route("/items/:item_id/:world_id", axum::routing::get(get_item))
+        .with_state(redis_connection)
         .layer(api_layers);
 
-    let bind_address = bind_address.parse::<SocketAddr>().unwrap_or_else(|_| panic!("Failed to parse a valid address from BIND_ADDRESS ({bind_address})."));
+    let bind_address = bind_address.parse::<SocketAddr>().unwrap_or_else(|_| panic!("Failed to parse a valid address from BIND_ADDRESS ({bind_address}). Exiting."));
     axum::Server::bind(&bind_address)
         .serve(routes.into_make_service())
         .await

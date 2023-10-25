@@ -7,10 +7,10 @@ edition = "2021"
 
 [dependencies]
 listings = { path = "../listings" }
-axum = "0.6.0"
+axum = "0.6.20"
 byteorder = "1.5.0"
 http = "0.2.9"
-redis = { version = "0.23.0" }
+redis = { version = "0.23.0", features = ["connection-manager", "tokio-comp"] }
 serde = { version = "1.0.164", features = ["derive"] }
 tokio = { version = "1.28.2", features = ["full"] }
 tower = { version = "0.4.13", features = ["full"] }
