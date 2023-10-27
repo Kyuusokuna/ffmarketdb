@@ -82,7 +82,7 @@ function request_data() {
     document.getElementById("results_table_rows").replaceChildren();
     
     for(const world of selected_dc.Worlds) {
-        const url = "https://ffmarketdb.kyuusokuna.ovh/items/" + world + "/" + selected_item;
+        const url = "https://ffmarketdb.kyuusokuna.ovh/items/" + selected_item + "/" + world;
         //const url = "http://localhost:3000/items/" + world + "/" + selected_item;
 
         const world_name = get_world_name(world);
