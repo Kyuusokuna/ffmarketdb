@@ -1,5 +1,6 @@
 use std::io::{Read, Write};
 use serde::Deserialize;
+use tracing::error;
 
 #[derive(Deserialize)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
@@ -39,9 +40,6 @@ pub struct Listing {
 
     #[serde(rename = "lastReviewTime")]
     pub creation_time: u64,    
-
-    #[serde(rename = "sellerID")]
-    pub seller_id: String,
 }
 
 #[derive(Deserialize)]
@@ -129,7 +127,10 @@ impl<Stream: Read + Write> Connection<Stream> {
                 continue;
             }
 
-            let Ok(message) = bson::from_slice::<Message>(&message.into_data()) else { continue };
+            let Ok(message) = bson::from_slice::<Message>(&message.into_data()) else {
+                error!("Failed to decode universalis message. Dropping data.");
+                continue 
+            };
             return Ok(message);
         }
     }
